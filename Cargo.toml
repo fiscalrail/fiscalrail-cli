@@ -1,0 +1,17 @@
+[package]
+name = "fiscalrail-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Command-line client for the FiscalRail API"
+license = "MIT"
+
+[[bin]]
+name = "fiscalrail"
+path = "src/main.rs"
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rpassword = "7"
+url = "2"
