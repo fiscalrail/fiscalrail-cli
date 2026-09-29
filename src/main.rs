@@ -365,6 +365,20 @@ fn valid_profile(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+fn valid_api_key(key: &str) -> bool {
+    !key.is_empty() && !key.chars().any(char::is_whitespace)
+}
+
+fn key_environment(key: &str) -> &'static str {
+    if key.starts_with("fra_test_") || key.starts_with("ak_test_") {
+        "Test"
+    } else if key.starts_with("fra_") || key.starts_with("ak_") {
+        "Live"
+    } else {
+        "Unknown"
+    }
+}
+
 fn atomic_write(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
     let parent = path
         .parent()
@@ -466,8 +480,10 @@ fn profiles_command(w: &[String], opts: &Options, dir: &Path) -> Result<()> {
             } else {
                 return Err(CliError::usage("use --key-stdin in unattended use"));
             };
-            if !key.starts_with("ak_") || key.chars().any(char::is_whitespace) {
-                return Err(CliError::usage("expected an ak_ or ak_test_ API key"));
+            if !valid_api_key(&key) {
+                return Err(CliError::usage(
+                    "API key must be nonempty and contain no whitespace",
+                ));
             }
             creds.profiles.insert(name.to_string(), key);
             config.profiles.push(name.to_string());
@@ -682,11 +698,7 @@ fn run_api(op: Operation, opts: &Options, dir: &Path) -> Result<()> {
     };
     if op.destructive {
         let (key, source) = credential(opts, dir, false)?;
-        let environment = if key.as_deref().is_some_and(|k| k.starts_with("ak_test_")) {
-            "Test"
-        } else {
-            "Live"
-        };
+        let environment = key.as_deref().map_or("Unknown", key_environment);
         confirm(
             opts,
             &format!(
@@ -881,6 +893,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn accepts_new_and_legacy_api_keys_without_guessing_their_format() {
+        for key in [
+            "fra_test_example",
+            "fra_example",
+            "ak_test_example",
+            "ak_example",
+        ] {
+            assert!(valid_api_key(key));
+        }
+        for key in ["", "fra_test_ example", "fra_test_\nexample"] {
+            assert!(!valid_api_key(key));
+        }
+        assert_eq!(key_environment("fra_test_example"), "Test");
+        assert_eq!(key_environment("ak_test_example"), "Test");
+        assert_eq!(key_environment("fra_example"), "Live");
+        assert_eq!(key_environment("ak_example"), "Live");
+        assert_eq!(key_environment("future_example"), "Unknown");
+    }
+
+    #[test]
     fn all_current_operations_have_distinct_commands() {
         let commands = [
             "account get",
@@ -988,7 +1020,7 @@ mod tests {
             );
             assert!(request
                 .to_ascii_lowercase()
-                .contains("authorization: bearer ak_test_example"));
+                .contains("authorization: bearer fra_test_example"));
             let body = r#"{"object":"list","has_more":true,"data":[]}"#;
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
         });
@@ -1007,7 +1039,7 @@ mod tests {
         let mut creds = Credentials::default();
         creds
             .profiles
-            .insert("test".into(), "ak_test_example".into());
+            .insert("test".into(), "fra_test_example".into());
         save_credentials(&dir, &creds).unwrap();
         let opts = Options {
             api_url: Some(format!("http://{address}/v1")),

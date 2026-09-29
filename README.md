@@ -15,19 +15,19 @@ brew install fiscalrail/tap/fiscalrail
 
 The formula is maintained in the [FiscalRail Homebrew tap](https://github.com/fiscalrail/homebrew-tap).
 
-Download the `v0.5.0` archive for your machine:
+Download the `v0.5.1` archive for your machine:
 
 | Platform | Archive |
 | --- | --- |
-| macOS, Apple Silicon | [aarch64-apple-darwin](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.0/fiscalrail-v0.5.0-aarch64-apple-darwin.tar.gz) |
-| macOS, Intel | [x86_64-apple-darwin](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.0/fiscalrail-v0.5.0-x86_64-apple-darwin.tar.gz) |
-| Linux, arm64 | [aarch64-unknown-linux-musl](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.0/fiscalrail-v0.5.0-aarch64-unknown-linux-musl.tar.gz) |
-| Linux, x86-64 | [x86_64-unknown-linux-musl](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.0/fiscalrail-v0.5.0-x86_64-unknown-linux-musl.tar.gz) |
+| macOS, Apple Silicon | [aarch64-apple-darwin](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.1/fiscalrail-v0.5.1-aarch64-apple-darwin.tar.gz) |
+| macOS, Intel | [x86_64-apple-darwin](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.1/fiscalrail-v0.5.1-x86_64-apple-darwin.tar.gz) |
+| Linux, arm64 | [aarch64-unknown-linux-musl](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.1/fiscalrail-v0.5.1-aarch64-unknown-linux-musl.tar.gz) |
+| Linux, x86-64 | [x86_64-unknown-linux-musl](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.1/fiscalrail-v0.5.1-x86_64-unknown-linux-musl.tar.gz) |
 
 For example, on an Apple Silicon Mac (change `target` for another platform):
 
 ```sh
-version=0.5.0
+version=0.5.1
 target=aarch64-apple-darwin
 archive="fiscalrail-v${version}-${target}.tar.gz"
 base="https://github.com/fiscalrail/fiscalrail-cli/releases/download/v${version}"
@@ -47,7 +47,7 @@ On Linux, use `sha256sum -c -` in place of `shasum -a 256 -c -`. Ensure
 With Rust installed, you can build the same tagged version instead:
 
 ```sh
-cargo install --git https://github.com/fiscalrail/fiscalrail-cli.git --tag v0.5.0 --locked fiscalrail-cli
+cargo install --git https://github.com/fiscalrail/fiscalrail-cli.git --tag v0.5.1 --locked fiscalrail-cli
 ```
 
 The executable is `fiscalrail`. There is no separate `fr` dialect.
