@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy --component rustfmt
+          rustup default stable
+      - name: Verify release tag matches Cargo version
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "fiscalrail-cli") | .version')
+          test "$GITHUB_REF_NAME" = "v$version"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Rust target
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add "$TARGET"
+      - name: Install musl toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - name: Build and smoke test
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          cargo build --release --locked --target "$TARGET"
+          "target/$TARGET/release/fiscalrail" --help >/dev/null
+      - name: Package binary
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p dist package
+          cp "target/$TARGET/release/fiscalrail" LICENSE README.md package/
+          tar -czf "dist/fiscalrail-${GITHUB_REF_NAME}-${TARGET}.tar.gz" -C package fiscalrail LICENSE README.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: binary-*
+          path: dist
+          merge-multiple: true
+      - name: Verify assets and create checksums
+        run: |
+          test "$(find dist -maxdepth 1 -name 'fiscalrail-*.tar.gz' | wc -l | tr -d ' ')" = 4
+          cd dist
+          sha256sum fiscalrail-*.tar.gz > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/SHA256SUMS --verify-tag --generate-notes

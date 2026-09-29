@@ -15,6 +15,20 @@ cargo install --path .
 
 The executable is `fiscalrail`. There is no separate `fr` dialect.
 
+### Release binaries
+
+Tagged releases publish archives for macOS (Apple Silicon and Intel) and Linux
+(arm64 and x86-64, statically linked with musl) on the
+[GitHub Releases page](https://github.com/fiscalrail/fiscalrail-cli/releases).
+Each archive contains `fiscalrail`, this README, and the license. Check archive
+hashes against `SHA256SUMS` in the release before installing the executable on
+your `PATH`. macOS binaries are currently unsigned.
+
+The release workflow runs when a `v<version>` tag matching `Cargo.toml` is
+pushed from a commit on `main`. It verifies formatting, lint, and tests before
+building all four targets and publishing the release. The workflow can also be
+run manually from Actions to test the builds without publishing a release.
+
 ## Credentials
 
 For scripts and CI, set `FISCALRAIL_API_KEY`. It overrides a selected profile.
