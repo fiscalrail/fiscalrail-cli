@@ -7,6 +7,14 @@ endpoints ship.
 
 ## Install
 
+With Homebrew on macOS or Linux:
+
+```sh
+brew install fiscalrail/tap/fiscalrail
+```
+
+The formula is maintained in the [FiscalRail Homebrew tap](https://github.com/fiscalrail/homebrew-tap).
+
 Download the `v0.5.0` archive for your machine:
 
 | Platform | Archive |
