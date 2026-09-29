@@ -7,10 +7,39 @@ endpoints ship.
 
 ## Install
 
-With Rust installed:
+Download the `v0.5.0` archive for your machine:
+
+| Platform | Archive |
+| --- | --- |
+| macOS, Apple Silicon | [aarch64-apple-darwin](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.0/fiscalrail-v0.5.0-aarch64-apple-darwin.tar.gz) |
+| macOS, Intel | [x86_64-apple-darwin](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.0/fiscalrail-v0.5.0-x86_64-apple-darwin.tar.gz) |
+| Linux, arm64 | [aarch64-unknown-linux-musl](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.0/fiscalrail-v0.5.0-aarch64-unknown-linux-musl.tar.gz) |
+| Linux, x86-64 | [x86_64-unknown-linux-musl](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.0/fiscalrail-v0.5.0-x86_64-unknown-linux-musl.tar.gz) |
+
+For example, on an Apple Silicon Mac (change `target` for another platform):
 
 ```sh
-cargo install --path .
+version=0.5.0
+target=aarch64-apple-darwin
+archive="fiscalrail-v${version}-${target}.tar.gz"
+base="https://github.com/fiscalrail/fiscalrail-cli/releases/download/v${version}"
+tmp=$(mktemp -d)
+curl -fsSL "$base/$archive" -o "$tmp/$archive"
+curl -fsSL "$base/SHA256SUMS" -o "$tmp/SHA256SUMS"
+cd "$tmp"
+grep "  $archive$" SHA256SUMS | shasum -a 256 -c -
+tar -xzf "$archive"
+mkdir -p "$HOME/.local/bin"
+install -m 755 fiscalrail "$HOME/.local/bin/fiscalrail"
+```
+
+On Linux, use `sha256sum -c -` in place of `shasum -a 256 -c -`. Ensure
+`~/.local/bin` is on your `PATH`, then run `fiscalrail --help`.
+
+With Rust installed, you can build the same tagged version instead:
+
+```sh
+cargo install --git https://github.com/fiscalrail/fiscalrail-cli.git --tag v0.5.0 --locked fiscalrail-cli
 ```
 
 The executable is `fiscalrail`. There is no separate `fr` dialect.
@@ -20,9 +49,8 @@ The executable is `fiscalrail`. There is no separate `fr` dialect.
 Tagged releases publish archives for macOS (Apple Silicon and Intel) and Linux
 (arm64 and x86-64, statically linked with musl) on the
 [GitHub Releases page](https://github.com/fiscalrail/fiscalrail-cli/releases).
-Each archive contains `fiscalrail`, this README, and the license. Check archive
-hashes against `SHA256SUMS` in the release before installing the executable on
-your `PATH`. macOS binaries are currently unsigned.
+Each archive contains `fiscalrail`, this README, and the license. macOS binaries
+are currently unsigned.
 
 The release workflow runs when a `v<version>` tag matching `Cargo.toml` is
 pushed from a commit on `main`. It verifies formatting, lint, and tests before
