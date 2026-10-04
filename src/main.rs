@@ -1,4 +1,4 @@
-use reqwest::blocking::Client;
+use reqwest::blocking::{multipart, Client};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -53,6 +53,8 @@ struct Options {
     output: Option<String>,
     idempotency_key: Option<String>,
     key_stdin: bool,
+    certificate_file: Option<String>,
+    certificate_password_stdin: bool,
     limit: Option<String>,
     starting_after: Option<String>,
     ending_before: Option<String>,
@@ -84,6 +86,11 @@ fn parse_args(raw: &[String]) -> Result<(Options, Vec<String>)> {
             i += 1;
             continue;
         }
+        if arg == "--certificate-password-stdin" {
+            opts.certificate_password_stdin = true;
+            i += 1;
+            continue;
+        }
         if arg == "--key-stdin" {
             opts.key_stdin = true;
             i += 1;
@@ -108,6 +115,7 @@ fn parse_args(raw: &[String]) -> Result<(Options, Vec<String>)> {
                 "--profile" => &mut opts.profile,
                 "--api-url" => &mut opts.api_url,
                 "--data" => &mut opts.data,
+                "--certificate-file" => &mut opts.certificate_file,
                 "--output" => &mut opts.output,
                 "--idempotency-key" => &mut opts.idempotency_key,
                 "--limit" => &mut opts.limit,
@@ -153,6 +161,7 @@ struct Operation {
     public: bool,
     binary: bool,
     idempotent: bool,
+    certificate_upload: bool,
     filter_names: &'static [&'static str],
 }
 impl Operation {
@@ -166,8 +175,13 @@ impl Operation {
             public: false,
             binary: false,
             idempotent: false,
+            certificate_upload: false,
             filter_names: &[],
         }
+    }
+    fn certificate_upload(mut self) -> Self {
+        self.certificate_upload = true;
+        self
     }
     fn list(mut self, filters: &'static [&'static str]) -> Self {
         self.list = true;
@@ -225,6 +239,20 @@ fn operation(w: &[String]) -> Result<Operation> {
         }
         ["account", "balance", "get"] => Operation::new("GET", "/account/balance".into()),
         ["account", "tax-regime", "get"] => Operation::new("GET", "/account/tax-regime".into()),
+        ["account", "tax-regime", "es", "certificate", "upload"] => {
+            Operation::new("POST", "/account/tax-regime/es/certificate".into()).certificate_upload()
+        }
+        ["account", "tax-regime", "es", "representation", "verify"] => Operation::new(
+            "POST",
+            "/account/tax-regime/es/representation/verify".into(),
+        ),
+        ["account", "tax-regime", "es", "submission", "verify"] => {
+            Operation::new("POST", "/account/tax-regime/es/submission/verify".into())
+        }
+        ["account", "tax-regime", "es", "submission", "cancel"] => {
+            Operation::new("DELETE", "/account/tax-regime/es/submission/pending".into())
+                .destructive()
+        }
         ["tax-ids", "get", id] => Operation::new("GET", member("tax-ids", id)?),
         ["tax-regimes", "list"] => Operation::new("GET", "/tax-regimes".into())
             .list(&[])
@@ -619,6 +647,18 @@ fn credential(opts: &Options, dir: &Path, public: bool) -> Result<(Option<String
 }
 
 fn run_api(op: Operation, opts: &Options, dir: &Path) -> Result<()> {
+    if !op.certificate_upload
+        && (opts.certificate_file.is_some() || opts.certificate_password_stdin)
+    {
+        return Err(CliError::usage(
+            "certificate options require account tax-regime es certificate upload",
+        ));
+    }
+    if op.certificate_upload && opts.certificate_file.is_none() {
+        return Err(CliError::usage(
+            "certificate upload requires --certificate-file PATH",
+        ));
+    }
     if opts.data.is_some() && !op.body {
         return Err(CliError::usage("--data is not supported for this command"));
     }
@@ -766,6 +806,34 @@ fn run_api(op: Operation, opts: &Options, dir: &Path) -> Result<()> {
     if let Some(b) = body {
         request = request.header(CONTENT_TYPE, "application/json").body(b);
     }
+    if op.certificate_upload {
+        let mut content = Vec::new();
+        fs::File::open(opts.certificate_file.as_ref().unwrap())
+            .and_then(|file| file.take(128 * 1024 + 1).read_to_end(&mut content))
+            .map_err(|e| CliError::local(format!("cannot read certificate file: {e}")))?;
+        if content.len() > 128 * 1024 {
+            return Err(CliError::usage("certificate file must be at most 128 KiB"));
+        }
+        let part = multipart::Part::bytes(content)
+            .file_name("certificate.p12")
+            .mime_str("application/x-pkcs12")
+            .map_err(|e| CliError::local(e.to_string()))?;
+        let mut form = multipart::Form::new().part("certificate_file", part);
+        if opts.certificate_password_stdin {
+            let mut password = String::new();
+            io::stdin()
+                .read_line(&mut password)
+                .map_err(|e| CliError::local(e.to_string()))?;
+            if password.ends_with('\n') {
+                password.pop();
+                if password.ends_with('\r') {
+                    password.pop();
+                }
+            }
+            form = form.text("certificate_password", password);
+        }
+        request = request.multipart(form);
+    }
     let response = request.send().map_err(|e| {
         let hint = if op.idempotent && opts.idempotency_key.is_some() {
             "retry with the same --idempotency-key"
@@ -851,7 +919,7 @@ fn run_api(op: Operation, opts: &Options, dir: &Path) -> Result<()> {
 }
 
 fn help() {
-    println!("fiscalrail [options] <resource> [nested-resource] <verb> [IDs]\n\nResources:\n  account get|update; account invoicing get|update; account balance get; account tax-regime get\n  customers list|get|create|update|delete\n  tax-ids get; tax-regimes list|get\n  invoices list|get|issue|amend; invoices pdf get|render|download\n  invoice-series, payment-instructions, event-destinations: list|get|create|update|delete\n  api-keys: list|get|create|delete; events: list|get\n  event-destinations enable|disable\n  profiles list|add|use|delete\n\nOptions: --profile NAME --api-url URL --data @FILE|@- --json --yes\n  --limit N --starting-after ID --ending-before ID --q TEXT --country CODE\n  --customer ID --issue-date-from DATE --issue-date-to DATE --types CSV\n  --idempotency-key KEY --output PATH|- --key-stdin\n\nExit codes: 0 success, 1 local/network error, 2 usage, 3 validation, 4 auth,\n  5 missing resource, 6 conflict, 7 rate limit, 8 server error.");
+    println!("fiscalrail [options] <resource> [nested-resource] <verb> [IDs]\n\nResources:\n  account get|update; account invoicing get|update; account balance get; account tax-regime get\n  account tax-regime es certificate upload; es representation verify; es submission verify|cancel\n  customers list|get|create|update|delete\n  tax-ids get; tax-regimes list|get\n  invoices list|get|issue|amend; invoices pdf get|render|download\n  invoice-series, payment-instructions, event-destinations: list|get|create|update|delete\n  api-keys: list|get|create|delete; events: list|get\n  event-destinations enable|disable\n  profiles list|add|use|delete\n\nOptions: --profile NAME --api-url URL --data @FILE|@- --json --yes\n  --limit N --starting-after ID --ending-before ID --q TEXT --country CODE\n  --customer ID --issue-date-from DATE --issue-date-to DATE --types CSV\n  --idempotency-key KEY --output PATH|- --key-stdin\n  --certificate-file PATH --certificate-password-stdin\n\nExit codes: 0 success, 1 local/network error, 2 usage, 3 validation, 4 auth,\n  5 missing resource, 6 conflict, 7 rate limit, 8 server error.");
 }
 fn main() {
     let raw: Vec<String> = env::args().skip(1).collect();
@@ -921,6 +989,10 @@ mod tests {
             "account invoicing update",
             "account balance get",
             "account tax-regime get",
+            "account tax-regime es certificate upload",
+            "account tax-regime es representation verify",
+            "account tax-regime es submission verify",
+            "account tax-regime es submission cancel",
             "api-keys list",
             "api-keys create",
             "api-keys get key",
@@ -959,7 +1031,7 @@ mod tests {
             "invoices pdf get invoice",
             "invoices pdf render invoice",
         ];
-        assert_eq!(commands.len(), 43);
+        assert_eq!(commands.len(), 47);
         let mut routes = std::collections::BTreeSet::new();
         for command in commands {
             let words: Vec<String> = command.split_whitespace().map(str::to_string).collect();
