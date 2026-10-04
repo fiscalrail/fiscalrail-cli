@@ -1,7 +1,7 @@
 # FiscalRail CLI
 
 `fiscalrail` is a Rust client for the current FiscalRail public API. It covers all
-43 operations in `config/fiscal_rail/api.oas.yml` as of 2026-09-28. Commands for
+47 operations in `config/fiscal_rail/api.oas.yml` as of 2026-10-04. Commands for
 proposed API endpoints in `docs/interface-design.md` will be added when those
 endpoints ship.
 
@@ -15,19 +15,19 @@ brew install fiscalrail/tap/fiscalrail
 
 The formula is maintained in the [FiscalRail Homebrew tap](https://github.com/fiscalrail/homebrew-tap).
 
-Download the `v0.5.1` archive for your machine:
+Download the `v0.6.0` archive for your machine:
 
 | Platform | Archive |
 | --- | --- |
-| macOS, Apple Silicon | [aarch64-apple-darwin](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.1/fiscalrail-v0.5.1-aarch64-apple-darwin.tar.gz) |
-| macOS, Intel | [x86_64-apple-darwin](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.1/fiscalrail-v0.5.1-x86_64-apple-darwin.tar.gz) |
-| Linux, arm64 | [aarch64-unknown-linux-musl](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.1/fiscalrail-v0.5.1-aarch64-unknown-linux-musl.tar.gz) |
-| Linux, x86-64 | [x86_64-unknown-linux-musl](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.5.1/fiscalrail-v0.5.1-x86_64-unknown-linux-musl.tar.gz) |
+| macOS, Apple Silicon | [aarch64-apple-darwin](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.6.0/fiscalrail-v0.6.0-aarch64-apple-darwin.tar.gz) |
+| macOS, Intel | [x86_64-apple-darwin](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.6.0/fiscalrail-v0.6.0-x86_64-apple-darwin.tar.gz) |
+| Linux, arm64 | [aarch64-unknown-linux-musl](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.6.0/fiscalrail-v0.6.0-aarch64-unknown-linux-musl.tar.gz) |
+| Linux, x86-64 | [x86_64-unknown-linux-musl](https://github.com/fiscalrail/fiscalrail-cli/releases/download/v0.6.0/fiscalrail-v0.6.0-x86_64-unknown-linux-musl.tar.gz) |
 
 For example, on an Apple Silicon Mac (change `target` for another platform):
 
 ```sh
-version=0.5.1
+version=0.6.0
 target=aarch64-apple-darwin
 archive="fiscalrail-v${version}-${target}.tar.gz"
 base="https://github.com/fiscalrail/fiscalrail-cli/releases/download/v${version}"
@@ -47,7 +47,7 @@ On Linux, use `sha256sum -c -` in place of `shasum -a 256 -c -`. Ensure
 With Rust installed, you can build the same tagged version instead:
 
 ```sh
-cargo install --git https://github.com/fiscalrail/fiscalrail-cli.git --tag v0.5.1 --locked fiscalrail-cli
+cargo install --git https://github.com/fiscalrail/fiscalrail-cli.git --tag v0.6.0 --locked fiscalrail-cli
 ```
 
 The executable is `fiscalrail`. There is no separate `fr` dialect.
@@ -138,3 +138,28 @@ an uncertain invoice issue or amendment, reuse the same idempotency key.
 
 The default base URL is `https://api.fiscalrail.com/v1`. `--api-url` or
 `FISCALRAIL_API_URL` can point to a development API.
+
+
+## Spanish AEAT submission
+
+Use a Live Spanish account key. Upload a `.p12`/`.pfx` file (up to 128 KiB),
+including its private key, using native multipart upload. Omit the password for
+an unprotected bundle. The certificate's issuer NIF must match the account.
+
+```sh
+# Omit --certificate-password-stdin for an unprotected bundle.
+printf '%s\n' "$CERTIFICATE_PASSWORD" | fiscalrail account tax-regime es certificate upload \
+  --certificate-file issuer.p12 --certificate-password-stdin
+fiscalrail account tax-regime get
+fiscalrail account tax-regime es submission verify
+fiscalrail account tax-regime es submission cancel --yes
+fiscalrail account tax-regime es representation verify
+```
+
+Each mutation above is a separate operation; choose the one needed. Upload and
+verification return the account setup while AEAT checks run asynchronously.
+Poll the generic account tax-regime resource for pending verification status,
+error code and the active setup's readiness. A working setup remains active until
+a replacement verifies; failed checks retain the pending certificate for retry.
+Cancelling removes only the pending change. Uploads are not automatically retried.
+The ES mutations use `/account/tax-regime/es/...`; reads use `/account/tax-regime`.
